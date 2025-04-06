@@ -85,8 +85,19 @@ const DrawingCanvas = ({
       saveHistoryState();
     }
     
-    // Detect if pointer events are supported (for pen tablets)
-    if (window.PointerEvent) {
+    // Enable pointer events for tablet support (optional, as we now have mouse support too)
+    // Check for stylus capability - define this first so we can reference it in cleanup
+    const detectPenTablet = (e: PointerEvent) => {
+      if (e.pointerType === 'pen') {
+        setIsPenTabletDetected(true);
+        setCurrentTool('stylus');
+        
+        // Once detected, remove this listener
+        window.removeEventListener('pointerdown', detectPenTablet);
+      }
+    };
+    
+    try {
       // Add pointer event listeners
       canvas.addEventListener('pointerdown', handlePointerDown);
       canvas.addEventListener('pointermove', handlePointerMove);
@@ -97,18 +108,10 @@ const DrawingCanvas = ({
       // Enable touch action
       canvas.style.touchAction = 'none';
       
-      // Check for stylus capability
-      const detectPenTablet = (e: PointerEvent) => {
-        if (e.pointerType === 'pen') {
-          setIsPenTabletDetected(true);
-          setCurrentTool('stylus');
-          
-          // Once detected, remove this listener
-          window.removeEventListener('pointerdown', detectPenTablet);
-        }
-      };
-      
+      // Listen for pen tablets
       window.addEventListener('pointerdown', detectPenTablet);
+    } catch (err) {
+      console.log('Pointer events not fully supported, using mouse events as fallback');
     }
     
     // Notify parent component that canvas is ready
@@ -119,12 +122,16 @@ const DrawingCanvas = ({
     return () => {
       window.removeEventListener('resize', resizeCanvas);
       
-      if (window.PointerEvent) {
+      // Clean up all event listeners
+      try {
         canvas.removeEventListener('pointerdown', handlePointerDown);
         canvas.removeEventListener('pointermove', handlePointerMove);
         canvas.removeEventListener('pointerup', handlePointerUp);
         canvas.removeEventListener('pointerout', handlePointerUp);
         canvas.removeEventListener('pointercancel', handlePointerUp);
+        window.removeEventListener('pointerdown', detectPenTablet);
+      } catch (err) {
+        console.log('Error cleaning up pointer events:', err);
       }
     };
   }, []);
@@ -271,9 +278,8 @@ const DrawingCanvas = ({
   
   // Mouse event handlers (fallback for non-pointer devices)
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Skip if pointer events are being used
-    if (window.PointerEvent) return;
-    
+    // Allow both pointer events and mouse events to work
+    // This ensures backward compatibility with all devices
     setIsDrawing(true);
     
     const canvas = canvasRef.current;
@@ -288,6 +294,7 @@ const DrawingCanvas = ({
     // Start a new path
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      configureContext(ctx);
       ctx.beginPath();
       ctx.arc(x, y, penSize / 2, 0, Math.PI * 2);
       ctx.fill();
@@ -295,9 +302,6 @@ const DrawingCanvas = ({
   };
   
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Skip if pointer events are being used
-    if (window.PointerEvent) return;
-    
     if (!isDrawing) return;
     
     const canvas = canvasRef.current;
@@ -317,9 +321,6 @@ const DrawingCanvas = ({
   };
   
   const stopDrawing = () => {
-    // Skip if pointer events are being used
-    if (window.PointerEvent) return;
-    
     if (isDrawing) {
       setIsDrawing(false);
       saveHistoryState();
