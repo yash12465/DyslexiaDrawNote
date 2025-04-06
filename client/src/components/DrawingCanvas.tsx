@@ -9,14 +9,23 @@ import {
   Redo2, 
   Trash2, 
   Type,
-  Shapes
+  Shapes,
+  Edit3,
+  Pen
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 interface DrawingCanvasProps {
   initialContent?: string;
   onContentChange?: (content: string) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+}
+
+interface Point {
+  x: number;
+  y: number;
+  pressure?: number; // For pen pressure sensitivity
 }
 
 const DrawingCanvas = ({ 
@@ -28,14 +37,15 @@ const DrawingCanvas = ({
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   
   const [isDrawing, setIsDrawing] = useState(false);
-  const [currentTool, setCurrentTool] = useState<'pen' | 'eraser'>('pen');
+  const [currentTool, setCurrentTool] = useState<'pen' | 'eraser' | 'stylus'>('pen');
   const [penColor, setPenColor] = useState('#000000');
   const [penSize, setPenSize] = useState(2);
-  const [lastPosition, setLastPosition] = useState({ x: 0, y: 0 });
+  const [lastPosition, setLastPosition] = useState<Point>({ x: 0, y: 0 });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isPenTabletDetected, setIsPenTabletDetected] = useState(false);
   
-  // Initialize canvas
+  // Initialize canvas and set up event listeners
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = canvasContainerRef.current;
@@ -75,6 +85,32 @@ const DrawingCanvas = ({
       saveHistoryState();
     }
     
+    // Detect if pointer events are supported (for pen tablets)
+    if (window.PointerEvent) {
+      // Add pointer event listeners
+      canvas.addEventListener('pointerdown', handlePointerDown);
+      canvas.addEventListener('pointermove', handlePointerMove);
+      canvas.addEventListener('pointerup', handlePointerUp);
+      canvas.addEventListener('pointerout', handlePointerUp);
+      canvas.addEventListener('pointercancel', handlePointerUp);
+      
+      // Enable touch action
+      canvas.style.touchAction = 'none';
+      
+      // Check for stylus capability
+      const detectPenTablet = (e: PointerEvent) => {
+        if (e.pointerType === 'pen') {
+          setIsPenTabletDetected(true);
+          setCurrentTool('stylus');
+          
+          // Once detected, remove this listener
+          window.removeEventListener('pointerdown', detectPenTablet);
+        }
+      };
+      
+      window.addEventListener('pointerdown', detectPenTablet);
+    }
+    
     // Notify parent component that canvas is ready
     if (onCanvasReady) {
       onCanvasReady(canvas);
@@ -82,6 +118,14 @@ const DrawingCanvas = ({
     
     return () => {
       window.removeEventListener('resize', resizeCanvas);
+      
+      if (window.PointerEvent) {
+        canvas.removeEventListener('pointerdown', handlePointerDown);
+        canvas.removeEventListener('pointermove', handlePointerMove);
+        canvas.removeEventListener('pointerup', handlePointerUp);
+        canvas.removeEventListener('pointerout', handlePointerUp);
+        canvas.removeEventListener('pointercancel', handlePointerUp);
+      }
     };
   }, []);
 
@@ -159,8 +203,77 @@ const DrawingCanvas = ({
     saveHistoryState();
   };
   
-  // Drawing functions
+  // Pointer events handlers (for pen tablet support)
+  const handlePointerDown = (e: PointerEvent) => {
+    setIsDrawing(true);
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    // Capture pointer to ensure all events are directed to this element
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    
+    const rect = canvas.getBoundingClientRect();
+    const point: Point = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      pressure: e.pressure || 1 // Default to 1 if pressure is not supported
+    };
+    
+    // If it's a stylus, automatically switch to stylus tool
+    if (e.pointerType === 'pen' && currentTool !== 'eraser') {
+      setCurrentTool('stylus');
+    }
+    
+    setLastPosition(point);
+    
+    // Start a new path for this stroke
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.beginPath();
+      drawPoint(ctx, point);
+    }
+  };
+  
+  const handlePointerMove = (e: PointerEvent) => {
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const point: Point = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      pressure: e.pressure || 1
+    };
+    
+    // Draw a line from last position to current position
+    drawLine(ctx, lastPosition, point);
+    
+    setLastPosition(point);
+  };
+  
+  const handlePointerUp = (e: PointerEvent) => {
+    if (isDrawing) {
+      // Release pointer capture
+      if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      }
+      
+      setIsDrawing(false);
+      saveHistoryState();
+    }
+  };
+  
+  // Mouse event handlers (fallback for non-pointer devices)
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Skip if pointer events are being used
+    if (window.PointerEvent) return;
+    
     setIsDrawing(true);
     
     const canvas = canvasRef.current;
@@ -171,9 +284,20 @@ const DrawingCanvas = ({
     const y = e.clientY - rect.top;
     
     setLastPosition({ x, y });
+    
+    // Start a new path
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.beginPath();
+      ctx.arc(x, y, penSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   };
   
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Skip if pointer events are being used
+    if (window.PointerEvent) return;
+    
     if (!isDrawing) return;
     
     const canvas = canvasRef.current;
@@ -186,42 +310,101 @@ const DrawingCanvas = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
-    ctx.lineWidth = penSize;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    
-    if (currentTool === 'pen') {
-      ctx.strokeStyle = penColor;
-      ctx.globalCompositeOperation = 'source-over';
-    } else if (currentTool === 'eraser') {
-      ctx.strokeStyle = '#ffffff';
-      ctx.globalCompositeOperation = 'destination-out';
-    }
-    
-    ctx.beginPath();
-    ctx.moveTo(lastPosition.x, lastPosition.y);
-    ctx.lineTo(x, y);
-    ctx.stroke();
+    // Draw line from last position to current position
+    drawLine(ctx, lastPosition, { x, y });
     
     setLastPosition({ x, y });
   };
   
   const stopDrawing = () => {
+    // Skip if pointer events are being used
+    if (window.PointerEvent) return;
+    
     if (isDrawing) {
       setIsDrawing(false);
       saveHistoryState();
     }
   };
   
+  // Drawing helper functions
+  const drawPoint = (ctx: CanvasRenderingContext2D, point: Point) => {
+    configureContext(ctx);
+    
+    // Draw a single point (useful for dots and small strokes)
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, getAdjustedPenSize(point.pressure) / 2, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  
+  const drawLine = (ctx: CanvasRenderingContext2D, from: Point, to: Point) => {
+    configureContext(ctx);
+    
+    // Draw a line from 'from' to 'to' points
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    
+    // For stylus, vary line width based on pressure
+    if (currentTool === 'stylus' && to.pressure !== undefined) {
+      ctx.lineWidth = getAdjustedPenSize(to.pressure);
+    }
+    
+    ctx.stroke();
+  };
+  
+  const configureContext = (ctx: CanvasRenderingContext2D) => {
+    // Set common drawing properties
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    switch(currentTool) {
+      case 'pen':
+        ctx.strokeStyle = penColor;
+        ctx.fillStyle = penColor;
+        ctx.lineWidth = penSize;
+        ctx.globalCompositeOperation = 'source-over';
+        break;
+        
+      case 'stylus':
+        ctx.strokeStyle = penColor;
+        ctx.fillStyle = penColor;
+        ctx.lineWidth = penSize;
+        ctx.globalCompositeOperation = 'source-over';
+        break;
+        
+      case 'eraser':
+        ctx.strokeStyle = '#ffffff';
+        ctx.fillStyle = '#ffffff';
+        ctx.lineWidth = penSize * 2; // Eraser is typically larger
+        ctx.globalCompositeOperation = 'destination-out';
+        break;
+    }
+  };
+  
+  // Adjust pen size based on pressure for stylus
+  const getAdjustedPenSize = (pressure: number = 1): number => {
+    if (currentTool === 'stylus') {
+      // Scale pen size based on pressure (0.5 to 2x the base size)
+      const minFactor = 0.5;
+      const maxFactor = 2.0;
+      const factor = minFactor + pressure * (maxFactor - minFactor);
+      return penSize * factor;
+    }
+    return penSize;
+  };
+  
   // Handle tool changes
-  const handleToolChange = (tool: 'pen' | 'eraser') => {
+  const handleToolChange = (tool: 'pen' | 'eraser' | 'stylus') => {
     setCurrentTool(tool);
   };
   
   // Handle pen color change
   const handleColorChange = (color: string) => {
     setPenColor(color);
-    setCurrentTool('pen');
+    // Keep the current tool if it's stylus or pen
+    if (currentTool === 'eraser') {
+      setCurrentTool(isPenTabletDetected ? 'stylus' : 'pen');
+    }
   };
   
   // Handle pen size change
@@ -243,8 +426,30 @@ const DrawingCanvas = ({
           <ColorPicker onColorChange={handleColorChange} defaultColor={penColor} />
         </div>
         
+        {/* Input Method Indicator */}
+        {isPenTabletDetected && (
+          <Badge variant="outline" className="bg-green-50 text-green-700 mr-2">
+            Pen Tablet Detected
+          </Badge>
+        )}
+        
         {/* Right Tools Group */}
         <div className="flex items-center space-x-3">
+          {/* Pen/Stylus Button */}
+          <Button
+            variant={(currentTool === 'pen' || currentTool === 'stylus') ? 'secondary' : 'outline'}
+            size="icon"
+            onClick={() => handleToolChange(isPenTabletDetected ? 'stylus' : 'pen')}
+            title={isPenTabletDetected ? "Stylus" : "Pen"}
+          >
+            {isPenTabletDetected ? (
+              <Edit3 className="h-5 w-5" />
+            ) : (
+              <Pen className="h-5 w-5" />
+            )}
+          </Button>
+          
+          {/* Eraser Button */}
           <Button
             variant={currentTool === 'eraser' ? 'secondary' : 'outline'}
             size="icon"
@@ -313,6 +518,7 @@ const DrawingCanvas = ({
         <canvas
           ref={canvasRef}
           className="w-full border border-gray-200 rounded-lg bg-white"
+          style={{ touchAction: 'none' }} // Disable browser handling of touch events
           onMouseDown={startDrawing}
           onMouseMove={draw}
           onMouseUp={stopDrawing}
