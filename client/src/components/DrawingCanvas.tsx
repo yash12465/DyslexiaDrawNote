@@ -20,6 +20,11 @@ interface DrawingCanvasProps {
   initialContent?: string;
   onContentChange?: (content: string) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+  backgroundStyle?: 'blank' | 'lined' | 'graph';
+  lineSpacing?: 'single' | 'wide' | 'college';
+  enableShapeCorrection?: boolean;
+  enableInstantCorrection?: boolean;
+  mode?: 'free' | 'notebook' | 'training';
 }
 
 interface Point {
@@ -31,7 +36,12 @@ interface Point {
 const DrawingCanvas = ({ 
   initialContent,
   onContentChange,
-  onCanvasReady
+  onCanvasReady,
+  backgroundStyle = 'blank',
+  lineSpacing = 'single',
+  enableShapeCorrection = false,
+  enableInstantCorrection = false,
+  mode = 'free'
 }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -44,6 +54,17 @@ const DrawingCanvas = ({
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isPenTabletDetected, setIsPenTabletDetected] = useState(false);
+  
+  // State for detecting and auto-correcting shapes
+  const [currentShape, setCurrentShape] = useState<{
+    type: 'line' | 'rectangle' | 'circle' | 'none';
+    startPoint: Point | null;
+    points: Point[];
+  }>({
+    type: 'none',
+    startPoint: null,
+    points: []
+  });
   
   // Initialize canvas and set up event listeners
   useEffect(() => {
@@ -64,9 +85,126 @@ const DrawingCanvas = ({
           ctx.putImageData(history[historyIndex].imageData, 0, 0);
         }
       }
+      
+      // Draw background based on selected style
+      drawCanvasBackground();
     };
     
     resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    
+  // Draw background based on style
+  const drawCanvasBackground = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear the background first
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw the selected background
+    switch(backgroundStyle) {
+      case 'lined':
+        drawLinedPaper(ctx, canvas.width, canvas.height);
+        break;
+      case 'graph':
+        drawGraphPaper(ctx, canvas.width, canvas.height);
+        break;
+      case 'blank':
+      default:
+        // Already filled with white
+        break;
+    }
+  };
+  
+  // Draw lined paper background
+  const drawLinedPaper = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    ctx.save();
+    
+    // Line spacing based on preference
+    let lineSpacingPx = 30; // default single line
+    if (lineSpacing === 'wide') {
+      lineSpacingPx = 45;
+    } else if (lineSpacing === 'college') {
+      lineSpacingPx = 25;
+    }
+    
+    // Draw horizontal lines
+    ctx.beginPath();
+    ctx.strokeStyle = "#e6e6ff"; // Light blue lines
+    ctx.lineWidth = 1;
+    
+    for (let y = lineSpacingPx; y < height; y += lineSpacingPx) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    }
+    
+    // Add a red margin line (left)
+    if (mode === 'notebook') {
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle = "#ffcccc"; // Light red
+      ctx.lineWidth = 1;
+      ctx.moveTo(40, 0);
+      ctx.lineTo(40, height);
+    }
+    
+    ctx.stroke();
+    ctx.restore();
+  };
+  
+  // Draw graph paper background
+  const drawGraphPaper = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    ctx.save();
+    
+    const gridSize = 20;
+    
+    // Draw grid
+    ctx.beginPath();
+    ctx.strokeStyle = "#e6e6e6"; // Light gray lines
+    ctx.lineWidth = 0.5;
+    
+    // Vertical lines
+    for (let x = gridSize; x < width; x += gridSize) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+    }
+    
+    // Horizontal lines
+    for (let y = gridSize; y < height; y += gridSize) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    }
+    
+    ctx.stroke();
+    
+    // Add darker lines for main grid
+    ctx.beginPath();
+    ctx.strokeStyle = "#cccccc"; // Darker gray for main grid
+    ctx.lineWidth = 1;
+    
+    // Vertical main lines
+    for (let x = gridSize * 5; x < width; x += gridSize * 5) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+    }
+    
+    // Horizontal main lines
+    for (let y = gridSize * 5; y < height; y += gridSize * 5) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    }
+    
+    ctx.stroke();
+    ctx.restore();
+  };
+  
+  // Initial draw
+  drawCanvasBackground();
+    
     window.addEventListener('resize', resizeCanvas);
     
     // If there's initial content, load it
@@ -232,6 +370,15 @@ const DrawingCanvas = ({
       setCurrentTool('stylus');
     }
     
+    // Store the start point for shape detection
+    if (enableShapeCorrection && mode === 'free') {
+      setCurrentShape({
+        type: 'none',
+        startPoint: point,
+        points: [point]
+      });
+    }
+    
     setLastPosition(point);
     
     // Start a new path for this stroke
@@ -258,10 +405,45 @@ const DrawingCanvas = ({
       pressure: e.pressure || 1
     };
     
+    // For shape correction, collect points during drawing
+    if (enableShapeCorrection && mode === 'free') {
+      setCurrentShape(prev => ({
+        ...prev,
+        points: [...prev.points, point]
+      }));
+    }
+    
     // Draw a line from last position to current position
     drawLine(ctx, lastPosition, point);
     
     setLastPosition(point);
+  };
+  
+  // Function to draw the canvas background
+  const drawCanvasBackground = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear the background first
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw the selected background
+    switch(backgroundStyle) {
+      case 'lined':
+        drawLinedPaper(ctx, canvas.width, canvas.height);
+        break;
+      case 'graph':
+        drawGraphPaper(ctx, canvas.width, canvas.height);
+        break;
+      case 'blank':
+      default:
+        // Already filled with white
+        break;
+    }
   };
   
   const handlePointerUp = (e: PointerEvent) => {
@@ -271,8 +453,103 @@ const DrawingCanvas = ({
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       }
       
+      // If shape correction is enabled, try to detect and correct shapes
+      if (enableShapeCorrection && mode === 'free') {
+        detectAndCorrectShape();
+      }
+      
       setIsDrawing(false);
       saveHistoryState();
+    }
+  };
+  
+  // Function to detect and correct drawn shapes
+  const detectAndCorrectShape = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // We need at least the current history state to analyze
+    if (historyIndex < 0 || !history[historyIndex]) return;
+    
+    // Get the current drawing's path points
+    // For a simple implementation, we'll detect basic shapes
+    // like lines, rectangles and circles based on start and end points
+    
+    // This is a simplified detection algorithm
+    // A real implementation would analyze the entire path and use ML algorithms
+    
+    // For demonstration, we'll implement a basic straight line detector
+    // If the user draws a nearly straight line, we'll correct it to a perfect line
+    
+    const startX = currentShape.startPoint?.x || 0;
+    const startY = currentShape.startPoint?.y || 0;
+    const endX = lastPosition.x;
+    const endY = lastPosition.y;
+    
+    // Calculate distance between start and end points
+    const distance = Math.sqrt(
+      Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2)
+    );
+    
+    // If the distance is significant (not just a dot)
+    if (distance > 20) {
+      // Check if it's a straight line (horizontal or vertical)
+      const isHorizontal = Math.abs(endY - startY) < 15;  // Within 15px
+      const isVertical = Math.abs(endX - startX) < 15;    // Within 15px
+      
+      if (isHorizontal) {
+        // Restore canvas to before this stroke
+        if (historyIndex > 0) {
+          ctx.putImageData(history[historyIndex - 1].imageData, 0, 0);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          drawCanvasBackground();
+        }
+        
+        // Draw a perfect horizontal line
+        ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle = penColor;
+        ctx.lineWidth = penSize;
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, startY);
+        ctx.stroke();
+        ctx.restore();
+        
+        return;
+      }
+      
+      if (isVertical) {
+        // Restore canvas to before this stroke
+        if (historyIndex > 0) {
+          ctx.putImageData(history[historyIndex - 1].imageData, 0, 0);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          drawCanvasBackground();
+        }
+        
+        // Draw a perfect vertical line
+        ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle = penColor;
+        ctx.lineWidth = penSize;
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(startX, endY);
+        ctx.stroke();
+        ctx.restore();
+        
+        return;
+      }
+      
+      // Check if it's a rectangle
+      // For demonstration, this is a very simplified detector
+      // A real implementation would analyze the entire path
+      
+      // For circles, check if the path roughly forms a circle
+      // This would require more sophisticated analysis
     }
   };
   
