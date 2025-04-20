@@ -1,8 +1,13 @@
 import * as tf from '@tensorflow/tfjs-node';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { createCanvas, loadImage } from 'canvas';
-import Jimp from 'jimp';
+import sharp from 'sharp';
+
+// Define directory path for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Define the model path
 const MODEL_DIR = path.join(__dirname, '../../ocr-model');
@@ -122,24 +127,20 @@ export async function initializeModel(): Promise<tf.LayersModel> {
  */
 export async function preprocessImage(imagePath: string): Promise<tf.Tensor4D> {
   try {
-    // Read and process the image with Jimp for better control
-    const image = await Jimp.read(imagePath);
-    
-    // Apply preprocessing specific for dyslexic handwriting
-    // 1. Convert to grayscale
-    image.grayscale();
-    
-    // 2. Increase contrast to make handwriting more distinct
-    image.contrast(0.2);
-    
-    // 3. Resize to our model dimensions
-    image.resize(IMAGE_WIDTH, IMAGE_HEIGHT);
-    
-    // 4. Convert to buffer
-    const buffer = await image.getBufferAsync(Jimp.MIME_JPEG);
+    // Read and process the image with sharp
+    const processedImageBuffer = await sharp(imagePath)
+      // Convert to grayscale
+      .grayscale()
+      // Increase contrast (equivalent to contrast of 0.2 in Jimp)
+      .linear(1.2, -0.1) 
+      // Resize to our model dimensions
+      .resize(IMAGE_WIDTH, IMAGE_HEIGHT)
+      // Output as jpeg
+      .toFormat('jpeg')
+      .toBuffer();
     
     // Convert to tensor
-    const imageTensor = tf.node.decodeImage(buffer, 1);
+    const imageTensor = tf.node.decodeImage(processedImageBuffer, 1);
     
     // Normalize pixel values to [0, 1]
     const normalized = imageTensor.div(tf.scalar(255));
@@ -161,21 +162,26 @@ export async function preprocessCanvas(canvasDataUrl: string): Promise<tf.Tensor
     const base64Data = canvasDataUrl.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
     
-    // Create a temporary file to process with Jimp
-    const tempFilePath = path.join(MODEL_DIR, '_temp_canvas.png');
-    fs.writeFileSync(tempFilePath, buffer);
+    // Process directly with sharp without saving to disk
+    const processedImageBuffer = await sharp(buffer)
+      // Convert to grayscale
+      .grayscale()
+      // Increase contrast (equivalent to contrast of 0.2 in Jimp)
+      .linear(1.2, -0.1) 
+      // Resize to our model dimensions
+      .resize(IMAGE_WIDTH, IMAGE_HEIGHT)
+      // Output as jpeg
+      .toFormat('jpeg')
+      .toBuffer();
     
-    // Process using our standard preprocessing
-    const tensor = await preprocessImage(tempFilePath);
+    // Convert to tensor
+    const imageTensor = tf.node.decodeImage(processedImageBuffer, 1);
     
-    // Clean up temporary file
-    try {
-      fs.unlinkSync(tempFilePath);
-    } catch (e) {
-      console.warn('Could not delete temp file:', e);
-    }
+    // Normalize pixel values to [0, 1]
+    const normalized = imageTensor.div(tf.scalar(255));
     
-    return tensor;
+    // Reshape to match model input
+    return normalized.expandDims(0) as tf.Tensor4D;
   } catch (error) {
     console.error('Error preprocessing canvas:', error);
     throw new Error('Failed to preprocess canvas');

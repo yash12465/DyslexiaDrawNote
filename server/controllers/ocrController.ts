@@ -1,7 +1,12 @@
 import { Request, Response } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 import * as ocrModel from '../services/ocrModel';
+
+// Define directory path for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Directory for storing training data
 const TRAINING_DATA_DIR = path.join(__dirname, '../../ocr-training-data');
@@ -22,11 +27,11 @@ export async function initializeModel(req: Request, res: Response) {
       message: 'OCR model initialized successfully',
       modelInfo
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error initializing OCR model:', error);
     res.status(500).json({
       message: 'Failed to initialize OCR model',
-      error: error.message
+      error: error?.message || 'Unknown error'
     });
   }
 }

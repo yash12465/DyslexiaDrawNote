@@ -3,9 +3,11 @@ import { useParams, useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DrawingCanvas from '@/components/DrawingCanvas';
 import TextRecognition from '@/components/TextRecognition';
-import { ArrowLeft, Save, Share } from 'lucide-react';
+import CustomOcrTrainer from '@/components/CustomOcrTrainer';
+import { ArrowLeft, Save, Share, BrainCircuit, TextCursorInput } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -183,11 +185,34 @@ const Note = () => {
             onCanvasReady={handleCanvasReady}
           />
           
-          {/* Text Recognition Panel */}
-          <TextRecognition
-            canvasElement={canvasRef.current}
-            onTextRecognized={handleTextRecognized}
-          />
+          {/* Text Processing Options in Tabs */}
+          <div className="mt-6">
+            <Tabs defaultValue="recognition" className="w-full">
+              <TabsList className="mb-4">
+                <TabsTrigger value="recognition" className="flex items-center">
+                  <TextCursorInput className="mr-2 h-4 w-4" />
+                  Text Recognition
+                </TabsTrigger>
+                <TabsTrigger value="custom-ocr" className="flex items-center">
+                  <BrainCircuit className="mr-2 h-4 w-4" />
+                  Custom OCR Model
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="recognition">
+                <TextRecognition
+                  canvasElement={canvasRef.current}
+                  onTextRecognized={handleTextRecognized}
+                />
+              </TabsContent>
+              
+              <TabsContent value="custom-ocr">
+                <CustomOcrTrainer
+                  canvasElement={canvasRef.current}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       )}
       
