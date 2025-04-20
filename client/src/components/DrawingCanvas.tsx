@@ -66,60 +66,6 @@ const DrawingCanvas = ({
     points: []
   });
   
-  // Initialize canvas and set up event listeners
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const container = canvasContainerRef.current;
-    
-    if (!canvas || !container) return;
-    
-    // Set canvas dimensions
-    const resizeCanvas = () => {
-      canvas.width = container.clientWidth;
-      canvas.height = container.clientHeight;
-      
-      // If we have history, restore the last state
-      if (historyIndex >= 0 && history[historyIndex]) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.putImageData(history[historyIndex].imageData, 0, 0);
-        }
-      }
-      
-      // Draw background based on selected style
-      drawCanvasBackground();
-    };
-    
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    
-  // Draw background based on style
-  const drawCanvasBackground = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Clear the background first
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw the selected background
-    switch(backgroundStyle) {
-      case 'lined':
-        drawLinedPaper(ctx, canvas.width, canvas.height);
-        break;
-      case 'graph':
-        drawGraphPaper(ctx, canvas.width, canvas.height);
-        break;
-      case 'blank':
-      default:
-        // Already filled with white
-        break;
-    }
-  };
-  
   // Draw lined paper background
   const drawLinedPaper = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     ctx.save();
@@ -202,9 +148,30 @@ const DrawingCanvas = ({
     ctx.restore();
   };
   
-  // Initial draw
-  drawCanvasBackground();
+  // Initialize canvas and set up event listeners
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = canvasContainerRef.current;
     
+    if (!canvas || !container) return;
+    
+    // Set canvas dimensions
+    const resizeCanvas = () => {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+      
+      // If we have history, restore the last state
+      if (historyIndex >= 0 && history[historyIndex]) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.putImageData(history[historyIndex].imageData, 0, 0);
+        }
+      } else {
+        drawCanvasBackground();
+      }
+    };
+    
+    resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     
     // If there's initial content, load it
@@ -219,7 +186,8 @@ const DrawingCanvas = ({
       };
       img.src = initialContent;
     } else {
-      // Save initial blank state
+      // Save initial blank state with background
+      drawCanvasBackground();
       saveHistoryState();
     }
     
