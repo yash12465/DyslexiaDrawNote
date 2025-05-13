@@ -1,37 +1,34 @@
-import { Router } from 'express';
+import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import * as ocrController from '../controllers/ocrController';
 
-// Configure storage for training images
+const router = express.Router();
+
+// Set up multer for file storage
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(process.cwd(), 'uploads/training');
-    
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(process.cwd(), 'ocr-training-data');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
-    
-    cb(null, uploadDir);
+    cb(null, uploadPath);
   },
-  filename: function (req, file, cb) {
-    // Generate unique filename with original extension
-    const fileExt = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${fileExt}`);
+  filename: (req, file, cb) => {
+    const uniqueFilename = `${uuidv4()}-${file.originalname}`;
+    cb(null, uniqueFilename);
   }
 });
 
-// Set up multer upload
 const upload = multer({ 
   storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB max file size
+    fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Accept only image files
+    // Accept only images
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
@@ -40,21 +37,31 @@ const upload = multer({
   }
 });
 
-const router = Router();
-
-// OCR model routes
+// Initialize OCR model
 router.post('/initialize', ocrController.initializeModel);
-router.get('/status', ocrController.getModelInfo);
 
-// Training image routes
-router.post('/upload-training', upload.single('image'), ocrController.uploadTrainingImage);
+// Get model info
+router.get('/model-info', ocrController.getModelInfo);
+
+// Upload training image
+router.post('/training-image', upload.single('image'), ocrController.uploadTrainingImage);
+
+// Train model with image
 router.post('/train', ocrController.trainWithImage);
-router.post('/train-batch', ocrController.trainBatch);
-router.get('/training-images', ocrController.getTrainingImages);
-router.get('/training-image/:id', ocrController.getTrainingImage);
-router.delete('/training-image/:id', ocrController.deleteTrainingImage);
 
-// Recognition route
-router.post('/recognize', upload.single('image'), ocrController.recognizeFromCanvas);
+// Train on batch of images
+router.post('/train-batch', ocrController.trainBatch);
+
+// Recognize text from canvas
+router.post('/recognize', ocrController.recognizeFromCanvas);
+
+// Get list of training images
+router.get('/training-images', ocrController.getTrainingImages);
+
+// Get specific training image
+router.get('/training-image/:id', ocrController.getTrainingImage);
+
+// Delete training image
+router.delete('/training-image/:id', ocrController.deleteTrainingImage);
 
 export default router;
