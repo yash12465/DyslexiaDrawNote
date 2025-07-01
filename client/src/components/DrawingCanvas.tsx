@@ -202,6 +202,55 @@ const DrawingCanvas = ({
         window.removeEventListener('pointerdown', detectPenTablet);
       }
     };
+
+    // Touch event handlers for better iPad support
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const point: Point = {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+        pressure: 1
+      };
+      
+      setIsDrawing(true);
+      setLastPosition(point);
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.beginPath();
+        drawPoint(ctx, point);
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (!isDrawing) return;
+      
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const point: Point = {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+        pressure: 1
+      };
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        drawLine(ctx, lastPosition, point);
+      }
+      
+      setLastPosition(point);
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      if (isDrawing) {
+        setIsDrawing(false);
+        saveHistoryState();
+      }
+    };
     
     try {
       // Add pointer event listeners
@@ -210,6 +259,12 @@ const DrawingCanvas = ({
       canvas.addEventListener('pointerup', handlePointerUp);
       canvas.addEventListener('pointerout', handlePointerUp);
       canvas.addEventListener('pointercancel', handlePointerUp);
+      
+      // Add touch event listeners for better iPad support
+      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+      canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+      canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
       
       // Enable touch action
       canvas.style.touchAction = 'none';
@@ -235,9 +290,13 @@ const DrawingCanvas = ({
         canvas.removeEventListener('pointerup', handlePointerUp);
         canvas.removeEventListener('pointerout', handlePointerUp);
         canvas.removeEventListener('pointercancel', handlePointerUp);
+        canvas.removeEventListener('touchstart', handleTouchStart);
+        canvas.removeEventListener('touchmove', handleTouchMove);
+        canvas.removeEventListener('touchend', handleTouchEnd);
+        canvas.removeEventListener('touchcancel', handleTouchEnd);
         window.removeEventListener('pointerdown', detectPenTablet);
       } catch (err) {
-        console.log('Error cleaning up pointer events:', err);
+        console.log('Error cleaning up events:', err);
       }
     };
   }, []);
