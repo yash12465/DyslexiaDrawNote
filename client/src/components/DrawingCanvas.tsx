@@ -203,6 +203,10 @@ const DrawingCanvas = ({
       }
     };
 
+    // Touch state tracking
+    let touchDrawing = false;
+    let touchLastPoint: Point | null = null;
+
     // Touch event handlers for better iPad support
     const handleTouchStart = (e: TouchEvent) => {
       e.preventDefault();
@@ -218,22 +222,24 @@ const DrawingCanvas = ({
         pressure: 1
       };
       
-      // Force set drawing state immediately
-      const currentDrawingState = true;
-      setIsDrawing(currentDrawingState);
-      setLastPosition(point);
+      touchDrawing = true;
+      touchLastPoint = point;
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
         configureContext(ctx);
         ctx.beginPath();
-        drawPoint(ctx, point);
+        ctx.moveTo(point.x, point.y);
+        ctx.lineTo(point.x, point.y);
+        ctx.stroke();
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      
+      if (!touchDrawing || !touchLastPoint) return;
       
       const touch = e.touches[0];
       if (!touch) return;
@@ -248,9 +254,11 @@ const DrawingCanvas = ({
       const ctx = canvas.getContext('2d');
       if (ctx) {
         configureContext(ctx);
-        // Always draw line regardless of isDrawing state for touch
-        drawLine(ctx, lastPosition, currentPoint);
-        setLastPosition(currentPoint);
+        ctx.beginPath();
+        ctx.moveTo(touchLastPoint.x, touchLastPoint.y);
+        ctx.lineTo(currentPoint.x, currentPoint.y);
+        ctx.stroke();
+        touchLastPoint = currentPoint;
       }
     };
 
@@ -258,31 +266,37 @@ const DrawingCanvas = ({
       e.preventDefault();
       e.stopPropagation();
       
-      setIsDrawing(false);
-      saveHistoryState();
+      if (touchDrawing) {
+        touchDrawing = false;
+        touchLastPoint = null;
+        saveHistoryState();
+      }
     };
     
     try {
-      // Add touch event listeners first for iPad support
+      // Add touch event listeners with highest priority for iPad support
       canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
       canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
       canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
       canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
       
-      // Add pointer event listeners only for non-touch devices
-      canvas.addEventListener('pointerdown', handlePointerDown);
-      canvas.addEventListener('pointermove', handlePointerMove);
-      canvas.addEventListener('pointerup', handlePointerUp);
-      canvas.addEventListener('pointerout', handlePointerUp);
-      canvas.addEventListener('pointercancel', handlePointerUp);
+      // Only add pointer events if touch is not supported
+      if (!('ontouchstart' in window)) {
+        canvas.addEventListener('pointerdown', handlePointerDown);
+        canvas.addEventListener('pointermove', handlePointerMove);
+        canvas.addEventListener('pointerup', handlePointerUp);
+        canvas.addEventListener('pointerout', handlePointerUp);
+        canvas.addEventListener('pointercancel', handlePointerUp);
+        window.addEventListener('pointerdown', detectPenTablet);
+      }
       
-      // Disable default touch behaviors
+      // Disable all default touch behaviors completely
       canvas.style.touchAction = 'none';
       canvas.style.userSelect = 'none';
       canvas.style.webkitUserSelect = 'none';
+      canvas.style.webkitTouchCallout = 'none';
+      canvas.style.webkitUserDrag = 'none';
       
-      // Listen for pen tablets
-      window.addEventListener('pointerdown', detectPenTablet);
     } catch (err) {
       console.log('Touch/Pointer events not fully supported, using mouse events as fallback');
     }
@@ -389,9 +403,10 @@ const DrawingCanvas = ({
   
   // Pointer events handlers (for pen tablet support)
   const handlePointerDown = (e: PointerEvent) => {
-    // Skip pointer events if it's a touch that will be handled by touch events
+    // Skip all touch-based pointer events completely
     if (e.pointerType === 'touch') {
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
     
@@ -436,9 +451,10 @@ const DrawingCanvas = ({
   };
   
   const handlePointerMove = (e: PointerEvent) => {
-    // Skip pointer events if it's a touch that will be handled by touch events
+    // Skip all touch-based pointer events completely
     if (e.pointerType === 'touch') {
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
     
@@ -500,9 +516,10 @@ const DrawingCanvas = ({
   };
   
   const handlePointerUp = (e: PointerEvent) => {
-    // Skip pointer events if it's a touch that will be handled by touch events
+    // Skip all touch-based pointer events completely
     if (e.pointerType === 'touch') {
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
     
