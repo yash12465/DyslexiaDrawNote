@@ -206,6 +206,8 @@ const DrawingCanvas = ({
     // Touch event handlers for better iPad support
     const handleTouchStart = (e: TouchEvent) => {
       e.preventDefault();
+      e.stopPropagation();
+      
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
       const point: Point = {
@@ -219,6 +221,7 @@ const DrawingCanvas = ({
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        configureContext(ctx);
         ctx.beginPath();
         drawPoint(ctx, point);
       }
@@ -226,6 +229,8 @@ const DrawingCanvas = ({
 
     const handleTouchMove = (e: TouchEvent) => {
       e.preventDefault();
+      e.stopPropagation();
+      
       if (!isDrawing) return;
       
       const touch = e.touches[0];
@@ -238,6 +243,7 @@ const DrawingCanvas = ({
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        configureContext(ctx);
         drawLine(ctx, lastPosition, point);
       }
       
@@ -246,6 +252,8 @@ const DrawingCanvas = ({
 
     const handleTouchEnd = (e: TouchEvent) => {
       e.preventDefault();
+      e.stopPropagation();
+      
       if (isDrawing) {
         setIsDrawing(false);
         saveHistoryState();
@@ -377,6 +385,11 @@ const DrawingCanvas = ({
   
   // Pointer events handlers (for pen tablet support)
   const handlePointerDown = (e: PointerEvent) => {
+    // Skip pointer events if it's a touch that will be handled by touch events
+    if (e.pointerType === 'touch') {
+      return;
+    }
+    
     setIsDrawing(true);
     
     const canvas = canvasRef.current;
@@ -411,12 +424,18 @@ const DrawingCanvas = ({
     // Start a new path for this stroke
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      configureContext(ctx);
       ctx.beginPath();
       drawPoint(ctx, point);
     }
   };
   
   const handlePointerMove = (e: PointerEvent) => {
+    // Skip pointer events if it's a touch that will be handled by touch events
+    if (e.pointerType === 'touch') {
+      return;
+    }
+    
     if (!isDrawing) return;
     
     const canvas = canvasRef.current;
@@ -441,6 +460,7 @@ const DrawingCanvas = ({
     }
     
     // Draw a line from last position to current position
+    configureContext(ctx);
     drawLine(ctx, lastPosition, point);
     
     setLastPosition(point);
@@ -474,6 +494,11 @@ const DrawingCanvas = ({
   };
   
   const handlePointerUp = (e: PointerEvent) => {
+    // Skip pointer events if it's a touch that will be handled by touch events
+    if (e.pointerType === 'touch') {
+      return;
+    }
+    
     if (isDrawing) {
       // Release pointer capture
       if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
