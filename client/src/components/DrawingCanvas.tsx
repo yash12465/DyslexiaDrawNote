@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 interface DrawingCanvasProps {
   initialContent?: string;
   onContentChange?: (content: string) => void;
+  onStrokeDataChange?: (strokeData: StrokePoint[]) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
   backgroundStyle?: 'blank' | 'lined' | 'graph';
   lineSpacing?: 'single' | 'wide' | 'college';
@@ -33,9 +34,24 @@ interface Point {
   pressure?: number; // For pen pressure sensitivity
 }
 
+interface StrokePoint {
+  x: number;
+  y: number;
+  time: number;
+  pen_down: boolean;
+  pressure?: number;
+  stroke_id?: string;
+}
+
+interface StrokeData {
+  points: StrokePoint[];
+  startTime: number;
+}
+
 const DrawingCanvas = ({ 
   initialContent,
   onContentChange,
+  onStrokeDataChange,
   onCanvasReady,
   backgroundStyle = 'blank',
   lineSpacing = 'single',
@@ -54,6 +70,12 @@ const DrawingCanvas = ({
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isPenTabletDetected, setIsPenTabletDetected] = useState(false);
+  
+  // Stroke tracking state
+  const [allStrokes, setAllStrokes] = useState<StrokePoint[]>([]);
+  const [currentStroke, setCurrentStroke] = useState<StrokePoint[]>([]);
+  const [strokeStartTime, setStrokeStartTime] = useState<number>(0);
+  const [currentStrokeId, setCurrentStrokeId] = useState<string>('');
   
   // State for detecting and auto-correcting shapes
   const [currentShape, setCurrentShape] = useState<{
@@ -225,6 +247,14 @@ const DrawingCanvas = ({
       touchDrawing = true;
       touchLastPoint = point;
       
+      // Start stroke tracking
+      const newStrokeId = `stroke_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setCurrentStrokeId(newStrokeId);
+      setStrokeStartTime(Date.now());
+      
+      const strokePoint = createStrokePoint(point.x, point.y, true, point.pressure);
+      setCurrentStroke([strokePoint]);
+      
       const ctx = canvas.getContext('2d');
       if (ctx) {
         configureContext(ctx);
@@ -251,6 +281,10 @@ const DrawingCanvas = ({
         pressure: 1
       };
       
+      // Add stroke point
+      const strokePoint = createStrokePoint(currentPoint.x, currentPoint.y, true, currentPoint.pressure);
+      setCurrentStroke(prev => [...prev, strokePoint]);
+      
       const ctx = canvas.getContext('2d');
       if (ctx) {
         configureContext(ctx);
@@ -268,7 +302,26 @@ const DrawingCanvas = ({
       
       if (touchDrawing) {
         touchDrawing = false;
+        
+        // Add final pen_down: false point
+        if (touchLastPoint) {
+          const finalStrokePoint = createStrokePoint(touchLastPoint.x, touchLastPoint.y, false, 1);
+          setCurrentStroke(prev => {
+            const updatedStroke = [...prev, finalStrokePoint];
+            setAllStrokes(allPrev => {
+              const newAllStrokes = [...allPrev, ...updatedStroke];
+              // Notify parent of stroke data change
+              if (onStrokeDataChange) {
+                onStrokeDataChange(newAllStrokes);
+              }
+              return newAllStrokes;
+            });
+            return updatedStroke;
+          });
+        }
+        
         touchLastPoint = null;
+        setCurrentStroke([]);
         saveHistoryState();
       }
     };
@@ -398,6 +451,14 @@ const DrawingCanvas = ({
     if (!ctx) return;
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Clear stroke data
+    setAllStrokes([]);
+    setCurrentStroke([]);
+    if (onStrokeDataChange) {
+      onStrokeDataChange([]);
+    }
+    
     saveHistoryState();
   };
   
@@ -429,6 +490,14 @@ const DrawingCanvas = ({
     if (e.pointerType === 'pen' && currentTool !== 'eraser') {
       setCurrentTool('stylus');
     }
+    
+    // Start stroke tracking
+    const newStrokeId = `stroke_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setCurrentStrokeId(newStrokeId);
+    setStrokeStartTime(Date.now());
+    
+    const strokePoint = createStrokePoint(point.x, point.y, true, point.pressure);
+    setCurrentStroke([strokePoint]);
     
     // Store the start point for shape detection
     if (enableShapeCorrection && mode === 'free') {
@@ -472,6 +541,10 @@ const DrawingCanvas = ({
       y: e.clientY - rect.top,
       pressure: e.pressure || 1
     };
+    
+    // Add stroke point
+    const strokePoint = createStrokePoint(point.x, point.y, true, point.pressure);
+    setCurrentStroke(prev => [...prev, strokePoint]);
     
     // For shape correction, collect points during drawing
     if (enableShapeCorrection && mode === 'free') {
@@ -529,12 +602,37 @@ const DrawingCanvas = ({
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       }
       
+      // Add final pen_down: false point
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const finalPoint: Point = {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+          pressure: e.pressure || 1
+        };
+        
+        const finalStrokePoint = createStrokePoint(finalPoint.x, finalPoint.y, false, finalPoint.pressure);
+        setCurrentStroke(prev => {
+          const updatedStroke = [...prev, finalStrokePoint];
+          setAllStrokes(allPrev => {
+            const newAllStrokes = [...allPrev, ...updatedStroke];
+            // Notify parent of stroke data change
+            if (onStrokeDataChange) {
+              onStrokeDataChange(newAllStrokes);
+            }
+            return newAllStrokes;
+          });
+          return updatedStroke;
+        });
+      }
+      
       // If shape correction is enabled, try to detect and correct shapes
       if (enableShapeCorrection && mode === 'free') {
         detectAndCorrectShape();
       }
       
       setIsDrawing(false);
+      setCurrentStroke([]);
       saveHistoryState();
     }
   };
@@ -642,6 +740,14 @@ const DrawingCanvas = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    // Start stroke tracking
+    const newStrokeId = `stroke_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setCurrentStrokeId(newStrokeId);
+    setStrokeStartTime(Date.now());
+    
+    const strokePoint = createStrokePoint(x, y, true, 1);
+    setCurrentStroke([strokePoint]);
+    
     setLastPosition({ x, y });
     
     // Start a new path
@@ -667,6 +773,10 @@ const DrawingCanvas = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    // Add stroke point
+    const strokePoint = createStrokePoint(x, y, true, 1);
+    setCurrentStroke(prev => [...prev, strokePoint]);
+    
     // Draw line from last position to current position
     drawLine(ctx, lastPosition, { x, y });
     
@@ -675,7 +785,23 @@ const DrawingCanvas = ({
   
   const stopDrawing = () => {
     if (isDrawing) {
+      // Add final pen_down: false point
+      const finalStrokePoint = createStrokePoint(lastPosition.x, lastPosition.y, false, 1);
+      setCurrentStroke(prev => {
+        const updatedStroke = [...prev, finalStrokePoint];
+        setAllStrokes(allPrev => {
+          const newAllStrokes = [...allPrev, ...updatedStroke];
+          // Notify parent of stroke data change
+          if (onStrokeDataChange) {
+            onStrokeDataChange(newAllStrokes);
+          }
+          return newAllStrokes;
+        });
+        return updatedStroke;
+      });
+      
       setIsDrawing(false);
+      setCurrentStroke([]);
       saveHistoryState();
     }
   };
@@ -745,6 +871,19 @@ const DrawingCanvas = ({
       return penSize * factor;
     }
     return penSize;
+  };
+
+  // Create stroke point helper
+  const createStrokePoint = (x: number, y: number, penDown: boolean, pressure?: number): StrokePoint => {
+    const now = Date.now();
+    return {
+      x,
+      y,
+      time: strokeStartTime > 0 ? now - strokeStartTime : 0,
+      pen_down: penDown,
+      pressure: pressure || 1,
+      stroke_id: currentStrokeId
+    };
   };
   
   // Handle tool changes

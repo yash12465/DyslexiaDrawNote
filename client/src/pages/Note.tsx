@@ -31,24 +31,25 @@ const Note = () => {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  
+
   // State for note data
   const [title, setTitle] = useState('Untitled Note');
   const [content, setContent] = useState('');
   const [preview, setPreview] = useState('');
   const [recognizedText, setRecognizedText] = useState('');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
-  
+
   // Canvas references and state
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeMode, setActiveMode] = useState<'free' | 'notebook' | 'training'>('free');
-  
+
   // Added settings for different modes
   const [autoCorrectShapes, setAutoCorrectShapes] = useState(true);
   const [instantCorrection, setInstantCorrection] = useState(true);
   const [lineSpacing, setLineSpacing] = useState<'single' | 'wide' | 'college'>('single');
   const [backgroundStyle, setBackgroundStyle] = useState<'blank' | 'lined' | 'graph'>('lined');
-  
+  const [strokeData, setStrokeData] = useState<StrokePoint[]>([]);
+
   // Fetch note data if editing an existing note
   const {
     data: noteData,
@@ -76,12 +77,15 @@ const Note = () => {
   // Handle canvas content change
   const handleContentChange = (newContent: string) => {
     setContent(newContent);
-    
+
     // Generate preview when content changes
     if (canvasRef.current) {
       setPreview(getCanvasPreview(canvasRef.current));
     }
   };
+    const handleStrokeDataChange = (strokes: StrokePoint[]) => {
+        setStrokeData(strokes);
+    };
 
   // Handle recognized text from TextRecognition component
   const handleTextRecognized = (text: string) => {
@@ -112,14 +116,14 @@ const Note = () => {
       if (id) {
         queryClient.invalidateQueries({ queryKey: [`/api/notes/${id}`] });
       }
-      
+
       setLastSavedAt(new Date());
-      
+
       toast({
         title: id ? 'Note updated' : 'Note created',
         description: `"${title}" has been ${id ? 'updated' : 'saved'} successfully.`,
       });
-      
+
       // If this is a new note, navigate to home after saving
       if (!id) {
         navigate('/');
@@ -153,7 +157,7 @@ const Note = () => {
               />
               <Label htmlFor="auto-correct-shapes">Auto-correct shapes</Label>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <Label htmlFor="background-style">Background:</Label>
               <Select
@@ -172,7 +176,7 @@ const Note = () => {
             </div>
           </div>
         );
-      
+
       case 'notebook':
         return (
           <div className="flex flex-col space-y-4 md:space-y-0 md:flex-row md:items-center md:justify-between p-4 bg-slate-50 rounded-lg">
@@ -184,7 +188,7 @@ const Note = () => {
               />
               <Label htmlFor="instant-correction">Instant text correction</Label>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <Label htmlFor="line-spacing">Line spacing:</Label>
               <Select
@@ -203,7 +207,7 @@ const Note = () => {
             </div>
           </div>
         );
-        
+
       case 'training':
         return (
           <div className="p-4 bg-slate-50 rounded-lg">
@@ -212,7 +216,7 @@ const Note = () => {
             </p>
           </div>
         );
-        
+
       default:
         return null;
     }
@@ -230,7 +234,7 @@ const Note = () => {
           >
             <ArrowLeft className="h-6 w-6" />
           </Button>
-          
+
           <Input
             type="text"
             value={title}
@@ -239,7 +243,7 @@ const Note = () => {
             placeholder="Untitled Note"
           />
         </div>
-        
+
         <div className="flex space-x-3">
           <Button
             onClick={handleSave}
@@ -249,7 +253,7 @@ const Note = () => {
             <Save className="mr-2 h-5 w-5" />
             {saveMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
-          
+
           <Button
             variant="outline"
             className="text-gray-700 font-dyslexic flex items-center"
@@ -300,29 +304,30 @@ const Note = () => {
                   Training Mode
                 </TabsTrigger>
               </TabsList>
-              
+
               <Button variant="ghost" size="sm" className="ml-auto">
                 <Settings className="h-4 w-4 mr-1" />
                 Settings
               </Button>
             </div>
-            
+
             {/* Mode-specific settings */}
             <div className="mt-2">
               {renderModeSettings()}
             </div>
-            
+
             {/* Free Drawing Mode */}
             <TabsContent value="free">
               <DrawingCanvas
                 initialContent={content}
                 onContentChange={handleContentChange}
+                 onStrokeDataChange={handleStrokeDataChange}
                 onCanvasReady={handleCanvasReady}
                 backgroundStyle={backgroundStyle}
                 enableShapeCorrection={autoCorrectShapes}
                 mode="free"
               />
-              
+
               {/* Recognition panel for free mode */}
               <div className="mt-4">
                 <div className="bg-white rounded-lg shadow p-4">
@@ -334,19 +339,20 @@ const Note = () => {
                 </div>
               </div>
             </TabsContent>
-            
+
             {/* Notebook Mode */}
             <TabsContent value="notebook">
               <DrawingCanvas
                 initialContent={content}
                 onContentChange={handleContentChange}
+                 onStrokeDataChange={handleStrokeDataChange}
                 onCanvasReady={handleCanvasReady}
                 backgroundStyle="lined"
                 lineSpacing={lineSpacing}
                 enableInstantCorrection={instantCorrection}
                 mode="notebook"
               />
-              
+
               {/* Real-time recognized text display for notebook mode */}
               <div className="mt-4 bg-white rounded-lg shadow p-4">
                 <h3 className="font-medium mb-2 font-dyslexic">Corrected Text:</h3>
@@ -355,7 +361,7 @@ const Note = () => {
                 </div>
               </div>
             </TabsContent>
-            
+
             {/* Training Mode */}
             <TabsContent value="training">
               <div className="bg-white rounded-lg shadow p-4">
@@ -363,9 +369,18 @@ const Note = () => {
               </div>
             </TabsContent>
           </Tabs>
+           <Tabs className="w-full">
+             <TabsList className="grid w-full grid-cols-2">
+                  
+                </TabsList>
+
+                
+
+                
+              </Tabs>
         </div>
       )}
-      
+
       {/* Last saved information */}
       {lastSavedAt && (
         <div className="mt-4 text-right text-sm text-gray-500 font-dyslexic">
@@ -377,3 +392,12 @@ const Note = () => {
 };
 
 export default Note;
+
+interface StrokePoint {
+  x: number;
+  y: number;
+  time: number;
+  pen_down: boolean;
+  pressure?: number;
+  stroke_id?: string;
+}
