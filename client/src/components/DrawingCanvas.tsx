@@ -306,18 +306,15 @@ const DrawingCanvas = ({
         // Add final pen_down: false point
         if (touchLastPoint) {
           const finalStrokePoint = createStrokePoint(touchLastPoint.x, touchLastPoint.y, false, 1);
-          setCurrentStroke(prev => {
-            const updatedStroke = [...prev, finalStrokePoint];
-            setAllStrokes(allPrev => {
-              const newAllStrokes = [...allPrev, ...updatedStroke];
-              // Notify parent of stroke data change
-              if (onStrokeDataChange) {
-                onStrokeDataChange(newAllStrokes);
-              }
-              return newAllStrokes;
-            });
-            return updatedStroke;
-          });
+          const updatedStroke = [...currentStroke, finalStrokePoint];
+          const newAllStrokes = [...allStrokes, ...updatedStroke];
+          
+          setAllStrokes(newAllStrokes);
+          
+          // Notify parent of stroke data change
+          if (onStrokeDataChange) {
+            onStrokeDataChange(newAllStrokes);
+          }
         }
         
         touchLastPoint = null;
@@ -612,18 +609,15 @@ const DrawingCanvas = ({
         };
         
         const finalStrokePoint = createStrokePoint(finalPoint.x, finalPoint.y, false, finalPoint.pressure);
-        setCurrentStroke(prev => {
-          const updatedStroke = [...prev, finalStrokePoint];
-          setAllStrokes(allPrev => {
-            const newAllStrokes = [...allPrev, ...updatedStroke];
-            // Notify parent of stroke data change
-            if (onStrokeDataChange) {
-              onStrokeDataChange(newAllStrokes);
-            }
-            return newAllStrokes;
-          });
-          return updatedStroke;
-        });
+        const updatedStroke = [...currentStroke, finalStrokePoint];
+        const newAllStrokes = [...allStrokes, ...updatedStroke];
+        
+        setAllStrokes(newAllStrokes);
+        
+        // Notify parent of stroke data change
+        if (onStrokeDataChange) {
+          onStrokeDataChange(newAllStrokes);
+        }
       }
       
       // If shape correction is enabled, try to detect and correct shapes
@@ -787,18 +781,15 @@ const DrawingCanvas = ({
     if (isDrawing) {
       // Add final pen_down: false point
       const finalStrokePoint = createStrokePoint(lastPosition.x, lastPosition.y, false, 1);
-      setCurrentStroke(prev => {
-        const updatedStroke = [...prev, finalStrokePoint];
-        setAllStrokes(allPrev => {
-          const newAllStrokes = [...allPrev, ...updatedStroke];
-          // Notify parent of stroke data change
-          if (onStrokeDataChange) {
-            onStrokeDataChange(newAllStrokes);
-          }
-          return newAllStrokes;
-        });
-        return updatedStroke;
-      });
+      const updatedStroke = [...currentStroke, finalStrokePoint];
+      const newAllStrokes = [...allStrokes, ...updatedStroke];
+      
+      setAllStrokes(newAllStrokes);
+      
+      // Notify parent of stroke data change
+      if (onStrokeDataChange) {
+        onStrokeDataChange(newAllStrokes);
+      }
       
       setIsDrawing(false);
       setCurrentStroke([]);
